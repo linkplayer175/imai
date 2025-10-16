@@ -1,5 +1,8 @@
-torch
-diffusers
 streamlit
+diffusers
+torch
+transformers
+accelerate
+pillow
 imageio
 moviepy
