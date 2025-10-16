@@ -1,0 +1,26 @@
+[
+    {
+        "scene_id": "1",
+        "image_reference": "scene1.png",
+        "camera_motion": "zoom-in",
+        "transition_type": "fade",
+        "caption": "The story of  {\n      \"scene_id\": \"1\",\n      \"image_reference\": \"scene1.png\",\n      \"camera_motion\": \"slow zoom-in\",\n      \"transition_type\": \"fade\",\n      \"lyrics_caption\": \"\ud83c\udfb5 Boo boo boo, it\u2019s spooky night! (clap-clap!)\",\n      \"duration_seconds\": 5\n    } begins with a gentle intro.",
+        "duration_seconds": 4
+    },
+    {
+        "scene_id": "2",
+        "image_reference": "scene2.png",
+        "camera_motion": "pan-right",
+        "transition_type": "slide",
+        "caption": "Action starts as the characters move with rhythm.",
+        "duration_seconds": 5
+    },
+    {
+        "scene_id": "3",
+        "image_reference": "scene3.png",
+        "camera_motion": "zoom-out",
+        "transition_type": "fade",
+        "caption": "The story ends with laughter and colors fading away.",
+        "duration_seconds": 6
+    }
+]
