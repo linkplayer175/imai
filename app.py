@@ -1,60 +1,115 @@
 import streamlit as st
+import json, time
 from PIL import Image
-import time
+from moviepy.editor import ImageClip, concatenate_videoclips
 
-# --- APP TITLE ---
-st.set_page_config(page_title="AI Image → Video Chat Demo", page_icon="🎬", layout="centered")
-st.title("🎬 AI Image → Video Animator Chat")
-st.write("Upload an image and chat with your AI assistant to describe your animation idea!")
+# optional: local lightweight LLM via Hugging Face if no OpenAI key
+from transformers import pipeline
 
-# --- SESSION STATE (for persistent chat memory) ---
+st.set_page_config(page_title="AI Image → Video Planner", page_icon="🎬", layout="centered")
+st.title("🎬 AI Image → Video Planner & Animator")
+
+# ---------- Setup ----------
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "animation_json" not in st.session_state:
+    st.session_state.animation_json = None
 
-# --- IMAGE UPLOAD SECTION ---
-uploaded_image = st.file_uploader("📸 Upload an image to animate", type=["png", "jpg", "jpeg"])
-if uploaded_image:
-    img = Image.open(uploaded_image)
-    st.image(img, caption="Uploaded Image", use_container_width=True)
+# choose model backend
+use_openai = "OPENAI_API_KEY" in st.secrets
+if use_openai:
+    import openai
+    openai.api_key = st.secrets["OPENAI_API_KEY"]
+else:
+    st.sidebar.info("Running local text-generation model (no API key found)")
+    generator = pipeline("text-generation", model="distilgpt2")
 
-# --- DISPLAY PREVIOUS CHAT MESSAGES ---
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+# ---------- Image Upload ----------
+uploaded = st.file_uploader("📸 Upload an image", type=["png","jpg","jpeg"])
+if uploaded:
+    img = Image.open(uploaded)
+    st.image(img, caption="Uploaded", use_container_width=True)
+    img_path = "uploaded.png"
+    img.save(img_path)
+else:
+    img_path = None
 
-# --- CHAT INPUT ---
-prompt = st.chat_input("💬 Describe your animation idea (e.g., 'Make the cat dance under moonlight')")
+# ---------- Show previous chat ----------
+for m in st.session_state.messages:
+    with st.chat_message(m["role"]):
+        st.markdown(m["content"])
 
-# --- CHAT LOGIC ---
+# ---------- Chat input ----------
+prompt = st.chat_input("💬 Describe your animation idea")
 if prompt:
-    # Display user message
     st.chat_message("user").markdown(prompt)
-    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.session_state.messages.append({"role":"user","content":prompt})
 
-    # Simulate AI "thinking"
+    system_instruction = (
+        "You are an animation planner AI. "
+        "Given a user's idea, return a valid JSON list of scenes. "
+        "Each scene must include: scene_id, image_reference, camera_motion, "
+        "transition_type, caption, and duration_seconds. "
+        "Return only JSON."
+    )
+
+    with st.spinner("🎨 Generating animation JSON..."):
+        if use_openai:
+            resp = openai.ChatCompletion.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role":"system","content":system_instruction},
+                    {"role":"user","content":prompt}
+                ],
+                temperature=0.7
+            )
+            text = resp.choices[0].message.content
+        else:
+            text = generator(system_instruction + "\n" + prompt, max_length=350)[0]["generated_text"]
+
+        try:
+            animation_json = json.loads(text)
+        except json.JSONDecodeError:
+            # try to extract JSON substring
+            start, end = text.find("["), text.rfind("]")
+            if start!=-1 and end!=-1:
+                animation_json = json.loads(text[start:end+1])
+            else:
+                animation_json = []
+
+    st.session_state.animation_json = animation_json
     with st.chat_message("assistant"):
-        placeholder = st.empty()
-        full_response = ""
+        if animation_json:
+            st.success("Here’s your generated animation plan:")
+            st.json(animation_json)
+        else:
+            st.warning("Could not parse valid JSON output.")
 
-        # Simple AI response generator (replace this with your model later)
-        simulated_reply = f"That’s a fun idea! I’ll animate **{prompt}** with smooth transitions and vibrant effects."
-        for chunk in simulated_reply.split():
-            full_response += chunk + " "
-            time.sleep(0.05)
-            placeholder.markdown(full_response + "▌")
-        placeholder.markdown(full_response)
+# ---------- Render preview ----------
+if st.session_state.animation_json and img_path:
+    if st.button("🎞️ Generate Animation Preview"):
+        st.info("⏳ Rendering short preview...")
+        scenes = st.session_state.animation_json
+        clips=[]
+        for s in scenes:
+            dur = s.get("duration_seconds",2)
+            motion = s.get("camera_motion","none")
+            clip = ImageClip(img_path,duration=dur)
 
-    # Save assistant message to memory
-    st.session_state.messages.append({"role": "assistant", "content": full_response})
+            if motion=="zoom-in": clip = clip.resize(lambda t:1+0.1*t)
+            elif motion=="zoom-out": clip = clip.resize(lambda t:1-0.1*t)
+            elif motion=="pan-left": clip = clip.set_position(lambda t:(-40*t,0))
+            elif motion=="pan-right": clip = clip.set_position(lambda t:(40*t,0))
 
-# --- SIDEBAR INFO ---
-st.sidebar.header("ℹ️ About this Demo")
-st.sidebar.markdown("""
-This is a sample **AI Image → Video** chat interface built in **Streamlit**.
+            clips.append(clip)
 
-✅ Upload any image  
-✅ Describe how to animate it  
-✅ See AI-style chat replies  
+        video = concatenate_videoclips(clips,method="compose")
+        out_path="preview.mp4"
+        video.write_videofile(out_path,fps=24,codec="libx264",audio=False)
+        st.video(out_path)
+        st.balloons()
 
-> 💡 Later, you can connect this chat to a real AI model (OpenAI, HuggingFace, or your own API).
-""")
+        with open("animation_plan.json","w") as f:
+            json.dump(scenes,f,indent=4)
+        with open("animation_plan.json","r") as f:
+            st.download_button("📄 Download JSON",f,file_name="animation_plan.json")

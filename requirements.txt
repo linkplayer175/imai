@@ -1,8 +1,6 @@
 streamlit>=1.28
-diffusers
-torch
-transformers
-accelerate
 pillow
-imageio
 moviepy
+transformers
+torch
+openai
